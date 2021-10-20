@@ -3552,6 +3552,47 @@ writeMemory(hProcess,address,writevalue,length=4, datatype="int") {
   return true
 }
 
+writeBytes(address, hexStringOrByteArray, aOffsets*) {
+	if !IsObject(hexStringOrByteArray)
+	{
+		if !IsObject(hexStringOrByteArray := hexStringToPattern(hexStringOrByteArray))
+			return hexStringOrByteArray
+	}
+	sizeBytes := getNeedleFromAOBPattern("", buffer, hexStringOrByteArray*)
+	_writeRaw(address, &buffer, sizeBytes, aOffsets*)
+	return true
+}
+
+getNeedleFromAOBPattern(byRef patternMask, byRef needleBuffer, aAOBPattern*) {
+	patternMask := "", VarSetCapacity(needleBuffer, aAOBPattern.MaxIndex())
+	for i, v in aAOBPattern
+		patternMask .= (v + 0 = "" ? "?" : "x"), NumPut(round(v), needleBuffer, A_Index - 1, "UChar")
+	return round(aAOBPattern.MaxIndex())
+}
+
+hexStringToPattern(hexString)
+{
+	AOBPattern := []
+	hexString := RegExReplace(hexString, "(\s|0x)")
+	StringReplace, hexString, hexString, ?, ?, UseErrorLevel
+	wildCardCount := ErrorLevel
+
+	if !length := StrLen(hexString)
+		return -1 ; no str
+	else if RegExMatch(hexString, "[^0-9a-fA-F?]")
+		return -2 ; non hex character and not a wild card
+	else if Mod(wildCardCount, 2)
+		return -3 ; non-even wild card character count
+	else if Mod(length, 2)
+		return -4 ; non-even character count
+	loop, % length/2
+	{
+		value := "0x" SubStr(hexString, 1 + 2 * (A_index-1), 2)
+		AOBPattern.Insert(value + 0 = "" ? "?" : value)
+	}
+	return AOBPattern
+}
+
 ; ##### Sonstiges #####
 checkHandles() {
     if (iRefreshHandles + 500 > A_TickCount)
@@ -3863,6 +3904,11 @@ writeRaw(hProcess, dwAddress, pBuffer, dwLen) {
     
     ErrorLevel := ERROR_OK
     return true
+}
+
+_writeRaw(address, pBuffer, sizeBytes, aOffsets*)
+{
+	return DllCall("WriteProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, "Ptr", pBuffer, "Ptr", sizeBytes, "Ptr", this.pNumberOfBytesWritten) 
 }
 
 ; internal stuff
@@ -4185,6 +4231,19 @@ stringMath(string) {
 	return "ERROR"
 }
 
+inttohex(int)
+{
+    HEX_INT := 8
+    while (HEX_INT--)
+    {
+        n := (int >> (HEX_INT * 4)) & 0xf
+        h .= n > 9 ? chr(0x37 + n) : n
+        if (HEX_INT == 0 && HEX_INT//2 == 0)
+            h .= " "
+    }
+    return "0x" h
+}
+
 getPageSize() {
     dwAddress := readDWORD(hGTA, dwSAMP + ADDR_SAMP_CHATMSG_PTR)
     if (ErrorLevel || !dwAddress)
@@ -4277,13 +4336,6 @@ UrlDownloadToVar(URL, ByRef Result, UserAgent = "", Proxy = "", ProxyBypass = ""
 	DllCall("wininet\InternetCloseHandle", "UInt", iou)
 	DllCall("wininet\InternetCloseHandle", "UInt", io)
 	DllCall("FreeLibrary", "UInt", hModule)
-}
-
-CheckStatus(){
-	if(IsInChat() || IsDialogOpen() || keybinds == 0 || authenticated == false)
-		return true
-	else
-		return false
 }
 
 DisableClouds(){
